@@ -9,8 +9,8 @@ export function ScoreDisplay({ correct, missed }: Props) {
 
   return (
     <div className="score-display">
-      <span className="score-display__correct">Вгадав: {correct}</span>
-      <span className="score-display__missed">Пропустив: {missed}</span>
+      <span className="score-display__correct">Правильно: {correct}</span>
+      <span className="score-display__missed">Пропущено: {missed}</span>
       {total > 0 && (
         <span className="score-display__pct">{pct}%</span>
       )}

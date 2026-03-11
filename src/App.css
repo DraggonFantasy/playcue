@@ -236,6 +236,19 @@ h1 {
   50% { opacity: 0.4; }
 }
 
+/* ===== Remarks (stage directions) ===== */
+.remark {
+  color: #888;
+  font-style: italic;
+}
+
+.replica--stage-direction {
+  font-style: italic;
+  color: #888;
+  border-left: 2px solid #555;
+  padding-left: 0.8rem;
+}
+
 .streaming-area__finished {
   text-align: center;
   padding: 2rem;

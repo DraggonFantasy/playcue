@@ -1,9 +1,11 @@
 import type { ParsedScript, Replica } from '../types';
 
-const CHARACTER_LINE_RE = /^([A-ZА-ЯЁІЇЄҐ][A-ZА-ЯЁІЇЄҐ\s''-]*)\.\s?(.*)/;
+const CHARACTER_LINE_RE =
+  /^([A-ZА-ЯЁІЇЄҐ][A-ZА-ЯЁІЇЄҐ''-]*(?:\s+[A-ZА-ЯЁІЇЄҐ][A-ZА-ЯЁІЇЄҐ''-]*)*)\s*(\/[^/]*\/\s*)?\.[ \t]?(.*)/;
+
+const STANDALONE_REMARK_RE = /^\s*\//;
 
 export function parseScript(text: string): ParsedScript {
-  // Strip BOM
   const clean = text.replace(/^\uFEFF/, '');
   const lines = clean.split('\n');
 
@@ -21,11 +23,12 @@ export function parseScript(text: string): ParsedScript {
           character: currentCharacter,
           text,
         });
-        if (!charactersSet.includes(currentCharacter)) {
+        if (currentCharacter && !charactersSet.includes(currentCharacter)) {
           charactersSet.push(currentCharacter);
         }
       }
     }
+    currentCharacter = null;
     currentTextLines = [];
   };
 
@@ -34,8 +37,17 @@ export function parseScript(text: string): ParsedScript {
     if (match) {
       flush();
       currentCharacter = match[1].trim();
-      const restOfLine = match[2] || '';
-      currentTextLines = [restOfLine];
+      const remark = match[2]?.trim() || '';
+      const restOfLine = match[3] || '';
+      const textStart = remark ? remark + ' ' + restOfLine : restOfLine;
+      currentTextLines = [textStart];
+    } else if (STANDALONE_REMARK_RE.test(line) && line.trim().length > 1) {
+      flush();
+      replicas.push({
+        id: replicas.length,
+        character: '',
+        text: line.trim(),
+      });
     } else if (currentCharacter !== null) {
       currentTextLines.push(line);
     }

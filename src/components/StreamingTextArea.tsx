@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { Replica, StreamPhase, CharacterColorMap } from '../types';
+import { renderRemarkText } from '../utils/renderRemarks';
 
 interface Props {
   replicas: Replica[];
@@ -43,30 +44,35 @@ export function StreamingTextArea({
 
         if (isFuture) return null;
 
-        const charColor = colorMap[replica.character] || '#ccc';
-        const isUser = isUserChar(replica.character);
+        const isStageDirection = replica.character === '';
+        const charColor = colorMap[replica.character] || '#888';
+        const isUser = !isStageDirection && isUserChar(replica.character);
 
         let textContent: React.ReactNode = null;
 
         if (isPast) {
-          textContent = <span className="replica__text">{replica.text}</span>;
+          textContent = (
+            <span className="replica__text">
+              {renderRemarkText(replica.text)}
+            </span>
+          );
         } else if (isCurrent) {
           if (phase === 'user_reciting') {
             const hint = getHintText(replica.text, hintWordsN);
             textContent = (
               <span className="replica__text replica__text--hidden">
-                {hint && <span className="replica__hint">{hint}</span>}
+                {hint && <span className="replica__hint">{renderRemarkText(hint)}</span>}
                 <span className="replica__prompt">
-                  Проговоріть репліку... [ПРОБІЛ для перевірки]
+                  Проговоріть репліку... [ПРОБІЛ / ТАП для перевірки]
                 </span>
               </span>
             );
           } else if (phase === 'user_reveal') {
             textContent = (
               <span className="replica__text replica__text--revealed">
-                {replica.text}
+                {renderRemarkText(replica.text)}
                 <span className="replica__prompt">
-                  {' '}[ПРОБІЛ для продовження]
+                  {' '}[ПРОБІЛ / ТАП для продовження]
                 </span>
               </span>
             );
@@ -74,7 +80,7 @@ export function StreamingTextArea({
             textContent = (
               <span className="replica__text replica__text--waiting">
                 <span className="replica__prompt replica__prompt--pulse">
-                  [Ваша репліка! Натисніть ПРОБІЛ]
+                  [Ваша репліка! ПРОБІЛ / ТАП]
                 </span>
               </span>
             );
@@ -82,7 +88,7 @@ export function StreamingTextArea({
             // streaming / pause_between / flash phases
             textContent = (
               <span className="replica__text">
-                {replica.text.slice(0, currentCharIndex)}
+                {renderRemarkText(replica.text.slice(0, currentCharIndex))}
                 <span className="replica__cursor">|</span>
               </span>
             );
@@ -95,11 +101,17 @@ export function StreamingTextArea({
             ref={isCurrent ? currentRef : undefined}
             className={`replica ${isPast ? 'replica--past' : ''} ${
               isCurrent ? 'replica--current' : ''
-            } ${isUser ? 'replica--user' : ''}`}
+            } ${isUser ? 'replica--user' : ''} ${
+              isStageDirection ? 'replica--stage-direction' : ''
+            }`}
           >
-            <span className="replica__character" style={{ color: charColor }}>
-              {replica.character}.
-            </span>{' '}
+            {!isStageDirection && (
+              <>
+                <span className="replica__character" style={{ color: charColor }}>
+                  {replica.character}.
+                </span>{' '}
+              </>
+            )}
             {textContent}
           </div>
         );
