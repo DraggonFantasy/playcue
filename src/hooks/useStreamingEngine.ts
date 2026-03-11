@@ -18,7 +18,9 @@ type Action =
   | { type: 'SET_HINT_WORDS'; n: number }
   | { type: 'SEEK'; index: number }
   | { type: 'START' }
-  | { type: 'RESET' };
+  | { type: 'RESET' }
+  | { type: 'TOGGLE_PAUSE' }
+  | { type: 'RESTORE'; index: number; speedMs: number; hintWordsN: number; score: { correct: number; missed: number } };
 
 interface EngineContext {
   replicas: Replica[];
@@ -172,6 +174,28 @@ function createReducer(ctx: EngineContext) {
         };
       }
 
+      case 'RESTORE': {
+        const idx = Math.max(0, Math.min(action.index, ctx.replicas.length - 1));
+        const phase = isUserReplica(ctx, idx) ? 'waiting_for_space' as const : 'streaming' as const;
+        return {
+          ...createInitialState(),
+          phase,
+          paused: true,
+          currentReplicaIndex: idx,
+          currentCharIndex: 0,
+          speedMs: action.speedMs,
+          hintWordsN: action.hintWordsN,
+          score: action.score,
+        };
+      }
+
+      case 'TOGGLE_PAUSE':
+        // Only allow pause during active phases
+        if (['streaming', 'pause_between', 'waiting_for_space'].includes(state.phase)) {
+          return { ...state, paused: !state.paused };
+        }
+        return state;
+
       case 'RESET':
         return createInitialState();
 
@@ -184,6 +208,7 @@ function createReducer(ctx: EngineContext) {
 function createInitialState(): StreamState {
   return {
     phase: 'idle',
+    paused: false,
     currentReplicaIndex: 0,
     currentCharIndex: 0,
     score: { correct: 0, missed: 0 },
@@ -235,7 +260,7 @@ export function useStreamingEngine(
 
   // Streaming tick
   useEffect(() => {
-    if (state.phase === 'streaming') {
+    if (state.phase === 'streaming' && !state.paused) {
       tickTimer.current = window.setTimeout(() => {
         dispatch({ type: 'TICK' });
       }, state.speedMs);
@@ -243,11 +268,11 @@ export function useStreamingEngine(
         if (tickTimer.current !== null) clearTimeout(tickTimer.current);
       };
     }
-  }, [state.phase, state.currentCharIndex, state.speedMs]);
+  }, [state.phase, state.paused, state.currentCharIndex, state.speedMs]);
 
   // Pause between replicas
   useEffect(() => {
-    if (state.phase === 'pause_between') {
+    if (state.phase === 'pause_between' && !state.paused) {
       pauseTimer.current = window.setTimeout(() => {
         dispatch({ type: 'PAUSE_DONE' });
       }, state.pauseBetweenMs);
@@ -255,11 +280,11 @@ export function useStreamingEngine(
         if (pauseTimer.current !== null) clearTimeout(pauseTimer.current);
       };
     }
-  }, [state.phase, state.pauseBetweenMs, state.currentReplicaIndex]);
+  }, [state.phase, state.paused, state.pauseBetweenMs, state.currentReplicaIndex]);
 
   // Flash timers
   useEffect(() => {
-    if (state.phase === 'wrong_press_flash' || state.phase === 'missed_cue_flash') {
+    if ((state.phase === 'wrong_press_flash' || state.phase === 'missed_cue_flash') && !state.paused) {
       flashTimer.current = window.setTimeout(() => {
         dispatch({ type: 'FLASH_DONE' });
       }, FLASH_DURATION_MS);
@@ -267,11 +292,11 @@ export function useStreamingEngine(
         if (flashTimer.current !== null) clearTimeout(flashTimer.current);
       };
     }
-  }, [state.phase]);
+  }, [state.phase, state.paused]);
 
   // Missed cue timer
   useEffect(() => {
-    if (state.phase === 'waiting_for_space') {
+    if (state.phase === 'waiting_for_space' && !state.paused) {
       missedCueTimer.current = window.setTimeout(() => {
         dispatch({ type: 'MISSED_CUE' });
       }, MISSED_CUE_TIMEOUT_MS);
@@ -279,7 +304,7 @@ export function useStreamingEngine(
         if (missedCueTimer.current !== null) clearTimeout(missedCueTimer.current);
       };
     }
-  }, [state.phase, state.currentReplicaIndex]);
+  }, [state.phase, state.paused, state.currentReplicaIndex]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -288,10 +313,15 @@ export function useStreamingEngine(
 
   const actions = {
     start: () => dispatch({ type: 'START' }),
+    togglePause: () => dispatch({ type: 'TOGGLE_PAUSE' }),
     spacePressed: () => dispatch({ type: 'SPACE_PRESSED' }),
     setSpeed: (ms: number) => dispatch({ type: 'SET_SPEED', speedMs: ms }),
     setHintWords: (n: number) => dispatch({ type: 'SET_HINT_WORDS', n }),
     seek: (index: number) => dispatch({ type: 'SEEK', index }),
+    restore: (index: number, speedMs: number, hintWordsN: number, score: { correct: number; missed: number }) => {
+      clearAllTimers();
+      dispatch({ type: 'RESTORE', index, speedMs, hintWordsN, score });
+    },
     reset: () => {
       clearAllTimers();
       dispatch({ type: 'RESET' });

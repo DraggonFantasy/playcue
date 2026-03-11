@@ -11,6 +11,8 @@ interface Props {
   missed: number;
   currentIndex: number;
   totalReplicas: number;
+  paused: boolean;
+  onTogglePause: () => void;
   onSeek: (index: number) => void;
   onRewind: () => void;
   onForward: () => void;
@@ -25,6 +27,8 @@ export function ControlBar({
   missed,
   currentIndex,
   totalReplicas,
+  paused,
+  onTogglePause,
   onSeek,
   onRewind,
   onForward,
@@ -33,6 +37,9 @@ export function ControlBar({
     <div className="control-bar">
       <div className="control-bar__nav">
         <button onClick={onRewind} title="Назад">⏪</button>
+        <button onClick={onTogglePause} title={paused ? 'Далі' : 'Пауза'} className={paused ? 'control-bar__pause--active' : ''}>
+          {paused ? '▶' : '⏸'}
+        </button>
         <span className="control-bar__position">
           {currentIndex + 1} / {totalReplicas}
         </span>

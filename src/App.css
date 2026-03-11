@@ -339,6 +339,9 @@ h1 {
 .control-bar__nav button:hover {
   color: #fff;
 }
+.control-bar__pause--active {
+  color: #4CAF50 !important;
+}
 .control-bar__position {
   font-size: 0.85rem;
   color: #888;

@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import type { ParsedScript } from './types';
 import { parseScript } from './utils/parseScript';
 import { assignColors } from './utils/assignColors';
@@ -12,10 +12,65 @@ import { ControlBar } from './components/ControlBar';
 import { RedFlash } from './components/RedFlash';
 import './App.css';
 
+const LS_KEY = 'play-text-learn-session';
+
+interface SavedSession {
+  rawText: string;
+  selectedCharacters: string[];
+  currentReplicaIndex: number;
+  score: { correct: number; missed: number };
+  speedMs: number;
+  hintWordsN: number;
+}
+
+function loadSession(): SavedSession | null {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as SavedSession;
+  } catch {
+    return null;
+  }
+}
+
+function saveSession(session: SavedSession) {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(session));
+  } catch { /* quota exceeded, ignore */ }
+}
+
+function clearSession() {
+  localStorage.removeItem(LS_KEY);
+}
+
+function initFromStorage(): {
+  script: ParsedScript | null;
+  rawText: string;
+  selectedChars: Set<string>;
+  started: boolean;
+  saved: SavedSession | null;
+} {
+  const saved = loadSession();
+  if (saved) {
+    const script = parseScript(saved.rawText);
+    return {
+      script,
+      rawText: saved.rawText,
+      selectedChars: new Set(saved.selectedCharacters),
+      started: true,
+      saved,
+    };
+  }
+  return { script: null, rawText: '', selectedChars: new Set(), started: false, saved: null };
+}
+
 function App() {
-  const [script, setScript] = useState<ParsedScript | null>(null);
-  const [selectedChars, setSelectedChars] = useState<Set<string>>(new Set());
-  const [started, setStarted] = useState(false);
+  const init = useRef(initFromStorage());
+
+  const [script, setScript] = useState<ParsedScript | null>(init.current.script);
+  const [rawText, setRawText] = useState(init.current.rawText);
+  const [selectedChars, setSelectedChars] = useState<Set<string>>(init.current.selectedChars);
+  const [started, setStarted] = useState(init.current.started);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const colorMap = useMemo(
@@ -27,24 +82,61 @@ function App() {
 
   const { state, actions } = useStreamingEngine(replicas, selectedChars);
 
+  // Restore engine state from saved session (once on mount)
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    const saved = init.current.saved;
+    if (saved && !restoredRef.current && replicas.length > 0) {
+      restoredRef.current = true;
+      actions.restore(saved.currentReplicaIndex, saved.speedMs, saved.hintWordsN, saved.score);
+    }
+  }, [replicas.length, actions]);
+
+  // Save to localStorage on meaningful state changes
+  useEffect(() => {
+    if (!started || !rawText) return;
+    saveSession({
+      rawText,
+      selectedCharacters: [...selectedChars],
+      currentReplicaIndex: state.currentReplicaIndex,
+      score: state.score,
+      speedMs: state.speedMs,
+      hintWordsN: state.hintWordsN,
+    });
+  }, [started, rawText, selectedChars, state.currentReplicaIndex, state.score, state.speedMs, state.hintWordsN]);
+
   const showFlash =
     state.phase === 'wrong_press_flash' || state.phase === 'missed_cue_flash';
 
   const keyboardActive =
-    state.phase === 'streaming' ||
-    state.phase === 'pause_between' ||
-    state.phase === 'waiting_for_space' ||
-    state.phase === 'user_reciting' ||
-    state.phase === 'user_reveal';
+    !state.paused && (
+      state.phase === 'streaming' ||
+      state.phase === 'pause_between' ||
+      state.phase === 'waiting_for_space' ||
+      state.phase === 'user_reciting' ||
+      state.phase === 'user_reveal'
+    );
 
   useKeyboardHandler(actions.spacePressed, keyboardActive);
+
+  // Escape to toggle pause
+  useEffect(() => {
+    if (!started) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.code === 'Escape') actions.togglePause();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [started, actions]);
 
   const handleFileLoaded = useCallback((text: string) => {
     const parsed = parseScript(text);
     setScript(parsed);
+    setRawText(text);
     setSelectedChars(new Set());
     setStarted(false);
     actions.reset();
+    clearSession();
   }, [actions]);
 
   const handleToggleChar = useCallback((char: string) => {
@@ -64,9 +156,11 @@ function App() {
 
   const handleNewFile = useCallback(() => {
     setScript(null);
+    setRawText('');
     setSelectedChars(new Set());
     setStarted(false);
     actions.reset();
+    clearSession();
   }, [actions]);
 
   // Not loaded
@@ -161,6 +255,8 @@ function App() {
           missed={state.score.missed}
           currentIndex={state.currentReplicaIndex}
           totalReplicas={replicas.length}
+          paused={state.paused}
+          onTogglePause={actions.togglePause}
           onSeek={actions.seek}
           onRewind={() => actions.seek(state.currentReplicaIndex - 1)}
           onForward={() => actions.seek(state.currentReplicaIndex + 1)}

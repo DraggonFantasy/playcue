@@ -22,6 +22,7 @@ export type StreamPhase =
 
 export interface StreamState {
   phase: StreamPhase;
+  paused: boolean;
   currentReplicaIndex: number;
   currentCharIndex: number;
   score: { correct: number; missed: number };
